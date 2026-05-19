@@ -227,10 +227,22 @@ http.createServer((req, res) => {
   req.on("end", () => {
     let parsed;
     try { parsed = JSON.parse(body); } catch(e) { res.writeHead(400); res.end(JSON.stringify({error:"Invalid JSON"})); return; }
+    
+    // Extract language instruction from frontend prompt if present
+    let langPrefix = "";
+    if (parsed.system) {
+      const langMatch = parsed.system.match(/Respond entirely in language code: ([a-z]+)/i);
+      if (langMatch) {
+        const codes = {"es":"Spanish","en":"English","fr":"French","de":"German","pt":"Portuguese","ja":"Japanese","ko":"Korean","it":"Italian"};
+        const langName = codes[langMatch[1]] || "Spanish";
+        langPrefix = "CRITICAL: Respond ENTIRELY in " + langName + ". Every word must be in " + langName + ".\n\n";
+      }
+    }
+
     const payload = JSON.stringify({
       model: parsed.model || "claude-haiku-4-5-20251001",
       max_tokens: parsed.max_tokens || 1500,
-      system: SYSTEM_PROMPT(),
+      system: langPrefix + SYSTEM_PROMPT(),
       messages: parsed.messages
     });
     const opt = {
