@@ -227,18 +227,10 @@ http.createServer((req, res) => {
   req.on("end", () => {
     let parsed;
     try { parsed = JSON.parse(body); } catch(e) { res.writeHead(400); res.end(JSON.stringify({error:"Invalid JSON"})); return; }
-    
-    // Extract language instruction from client system prompt if provided
-    let langInstruction = "";
-    if (parsed.system && parsed.system.includes("CRITICAL LANGUAGE INSTRUCTION")) {
-      const match = parsed.system.match(/CRITICAL LANGUAGE INSTRUCTION[^\n]+\n/);
-      if (match) langInstruction = match[0] + "\n";
-    }
-    
     const payload = JSON.stringify({
       model: parsed.model || "claude-haiku-4-5-20251001",
       max_tokens: parsed.max_tokens || 1500,
-      system: langInstruction + SYSTEM_PROMPT(),
+      system: SYSTEM_PROMPT(),
       messages: parsed.messages
     });
     const opt = {
