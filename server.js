@@ -2259,6 +2259,40 @@ Deliver the official ruling.`;
   }
 });
 
+
+// ══════════════════════════════════════════════════════════════════════════
+// /api/rules — Endpoint unificado para el frontend de chat
+// POST /api/rules  { model, max_tokens, system, messages }
+// Proxy directo a Claude — mismo formato que la API de Anthropic
+// ══════════════════════════════════════════════════════════════════════════
+app.post("/api/rules", async (req, res) => {
+  try {
+    const { model, max_tokens, system, messages } = req.body;
+
+    if (!messages || messages.length === 0) {
+      return res.status(400).json({ error: "No messages provided" });
+    }
+
+    addLog("api_rules_req", {
+      msgCount: messages.length,
+      lastMsg: messages[messages.length - 1]?.content?.slice(0, 80)
+    });
+
+    const response = await client.messages.create({
+      model: model || MODEL,
+      max_tokens: max_tokens || 1500,
+      system: system || "",
+      messages: messages,
+    });
+
+    addLog("api_rules_ok", { len: response.content[0]?.text?.length });
+    res.json(response);
+  } catch (err) {
+    addLog("api_rules_err", { msg: err.message });
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ══════════════════════════════════════════════════════════════════════════
 // ADMIN PANEL
 // ══════════════════════════════════════════════════════════════════════════
