@@ -6,8 +6,8 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
-
-app.use(cors());
+const ALLOWED_ORIGIN = "https://fairplay-lab.netlify.app";
+app.use(cors({ origin: ALLOWED_ORIGIN }));
 app.use(express.json({ limit: "10mb" }));
 
 const client = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
