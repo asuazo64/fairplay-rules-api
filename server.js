@@ -2124,6 +2124,12 @@ app.post("/phase1", async (req, res) => {
 Extract objective facts AND system assumptions from the user description of a golf rules situation.
 Respond ONLY with valid JSON — no markdown, no code blocks, no extra text.
 
+CORRECT 2023 TERMINOLOGY (the terms "water hazard" and "lateral water hazard" were ELIMINATED in 2019 — NEVER use them):
+- Red or yellow stakes/lines mark a "penalty area" (área de penalidad), NOT a "water hazard".
+- Red stakes = "red penalty area" (área de penalidad roja). Yellow stakes = "yellow penalty area".
+- White stakes = "out of bounds". Blue stakes = "ground under repair" / abnormal course condition.
+- Red stakes are NEVER out of bounds. Do not infer out of bounds from red or yellow stakes.
+
 JSON structure:
 {
   "facts": [
@@ -2137,12 +2143,12 @@ JSON structure:
 }
 
 Rules:
-- facts: 3-8 items, each a simple objective statement from user input
-- assumedFacts: always include: "Standard competition rules apply", "No local rules provided", and any other relevant assumptions
-- For ball in elevated position (tree, net, stands): ALWAYS include assumed fact: "Reference point is the spot on the ground directly below where the ball rests"
-- detectedRule: cite the most likely rule (e.g. "Rule 19 – Unplayable Ball")
+- facts: 3-8 items, each a simple objective statement taken DIRECTLY from user input. Do not add facts the user did not state.
+- assumedFacts: keep MINIMAL. Only include "Standard competition rules apply" and "No local rules provided". Do NOT assume the type of penalty area, hazard, out of bounds, ball position, or anything about how the area is defined unless the user explicitly stated it.
+- NEVER restate stake color as a different hazard type. If user says "red stakes", the assumption is "red penalty area" — nothing more.
+- For ball in elevated position (tree, net, stands): include assumed fact "Reference point is the spot on the ground directly below where the ball rests".
+- detectedRule: cite the most likely rule using 2023 names (e.g. "Rule 17 – Penalty Areas", "Rule 19 – Unplayable Ball"). Never "Rule 17 – Water Hazards".
 - Write facts in language: ${lang}`;
-
     const userContent = `Golf situation category: ${category || "general"}
 
 User description:
@@ -2380,5 +2386,5 @@ app.get("/health", (req, res) => {
 });
 
 app.listen(PORT, () => {
- console.log(`FairPlay Rules API v3.3-kb on port ${PORT}`);
+ console.log(`FairPlay Rules API v3.4-phase1 on port ${PORT}`);
 });
