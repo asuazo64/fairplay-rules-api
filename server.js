@@ -10,7 +10,7 @@ const ALLOWED_ORIGIN = "https://fairplay-lab.netlify.app";
 app.use(cors({ origin: ALLOWED_ORIGIN }));
 app.use(express.json({ limit: "10mb" }));
 
-const client = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
+const client = new Anthropic({ apiKey: ANTHROPIC_API_KEY, maxRetries: 4, timeout: 60000 });
 const MODEL = "claude-haiku-4-5-20251001";
 
 // ── Logging ────────────────────────────────────────────────────────────────
@@ -22,13 +22,22 @@ function addLog(type, data) {
 
 // ── Helper: llamada a Claude ──────────────────────────────────────────────
 async function callClaude(system, userContent, maxTokens = 1400) {
-  const response = await client.messages.create({
-    model: MODEL,
-    max_tokens: maxTokens,
-    system: system,
-    messages: [{ role: "user", content: userContent }],
-  });
-  return response.content[0].text;
+  let lastErr;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const response = await client.messages.create({
+        model: MODEL,
+        max_tokens: maxTokens,
+        system: system,
+        messages: [{ role: "user", content: userContent }],
+      });
+      return response.content[0].text;
+    } catch (err) {
+      lastErr = err;
+      await new Promise(function (r) { setTimeout(r, 1500 * (attempt + 1)); });
+    }
+  }
+  throw lastErr;
 }
 
 // ── Helper: limpiar JSON de Claude ────────────────────────────────────────
