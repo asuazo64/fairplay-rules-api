@@ -2201,7 +2201,7 @@ app.post("/ruling", async (req, res) => {
     const system = `You are an official golf rules referee using the 2023 Official Rules of Golf (R&A/USGA).
 
 KNOWLEDGE BASE — use this as your primary reference:
-${GOLF_KB.slice(0, 28000)}
+${GOLF_KB}
 
 CRITICAL INSTRUCTIONS:
 1. Base ruling ONLY on confirmed facts. Never invent facts.
