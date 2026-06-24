@@ -4,7 +4,7 @@ const Anthropic = require("@anthropic-ai/sdk");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "@tPqTq!9640710";
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 
 app.use(cors());
@@ -2297,6 +2297,7 @@ app.post("/api/rules", async (req, res) => {
 // ADMIN PANEL
 // ══════════════════════════════════════════════════════════════════════════
 app.get("/admin", (req, res) => {
+  if (!ADMIN_PASSWORD) return res.status(503).send("Admin deshabilitado: configura ADMIN_PASSWORD en Render");
   const { password } = req.query;
   if (password !== ADMIN_PASSWORD) {
     return res.status(401).send(`
