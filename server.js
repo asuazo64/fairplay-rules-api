@@ -11,6 +11,22 @@ app.use(cors({ origin: ALLOWED_ORIGIN }));
 app.use(express.json({ limit: "10mb" }));
 
 const client = new Anthropic({ apiKey: ANTHROPIC_API_KEY, maxRetries: 4, timeout: 60000 });
+const KB = require("./golf_kb.json");
+const CATEGORY_RULES = {
+  "Penalty Area": ["17"], "Bunker": ["12"], "Bola Perdida": ["18"], "Lost Ball": ["18"],
+  "Obstruction": ["15", "16"], "Ball Moved": ["9"], "Unplayable": ["19"],
+  "Green": ["13"], "Match Play": ["3", "21"], "Local Rule": [],
+};
+function buildKBContext(category, detectedRule) {
+  let keys = CATEGORY_RULES[category] || [];
+  if (keys.length === 0 && detectedRule) {
+    const m = String(detectedRule).match(/\b(\d{1,2})\b/);
+    if (m && KB[m[1]]) keys = [m[1]];
+  }
+  if (keys.length === 0) keys = ["17", "18", "19", "12", "16"];
+  return keys.map((k) => KB[k]).filter(Boolean)
+    .map((r) => `### Regla — ${r.titulo}\n${r.texto}`).join("\n\n");
+}
 const MODEL = "claude-haiku-4-5-20251001";
 
 // ── Logging ────────────────────────────────────────────────────────────────
@@ -2210,7 +2226,7 @@ app.post("/ruling", async (req, res) => {
     const system = `You are an official golf rules referee using the 2023 Official Rules of Golf (R&A/USGA).
 
 KNOWLEDGE BASE — use this as your primary reference:
-${GOLF_KB}
+${buildKBContext(category)}
 
 CRITICAL INSTRUCTIONS:
 1. Base ruling ONLY on confirmed facts. Never invent facts.
@@ -2364,5 +2380,5 @@ app.get("/health", (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`FairPlay Rules API v3.1-retry on port ${PORT}`);
+ console.log(`FairPlay Rules API v3.3-kb on port ${PORT}`);
 });
