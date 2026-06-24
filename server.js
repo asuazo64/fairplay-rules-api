@@ -2364,5 +2364,5 @@ app.get("/health", (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`FairPlay Rules API v3.0 (Golf KB embedded) on port ${PORT}`);
+  console.log(`FairPlay Rules API v3.1-retry on port ${PORT}`);
 });
