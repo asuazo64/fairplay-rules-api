@@ -2106,6 +2106,41 @@ those who have lost a limb),
 • Players with intellectual disabilities.
 It is recognized that there are ma`;
 
+
+// Language helpers for backend output consistency
+function getLanguageName(lang) {
+  const code = String(lang || "es").toLowerCase();
+  return ({
+    es: "Spanish",
+    en: "English",
+    fr: "French",
+    de: "German",
+    pt: "Portuguese",
+    it: "Italian",
+    ja: "Japanese",
+    jp: "Japanese",
+    ko: "Korean",
+    kr: "Korean"
+  })[code] || code;
+}
+
+function getRulingHeaders(lang) {
+  const code = String(lang || "es").toLowerCase();
+  const headers = {
+    es: ["DECISIÓN", "REGLA APLICADA", "INTERPRETACIÓN", "EXCEPCIONES Y CASOS ESPECIALES", "HECHOS ASUMIDOS", "CONFIANZA", "DESCARGO"],
+    en: ["RULING", "RULE APPLIED", "INTERPRETATION", "EXCEPTIONS & EDGE CASES", "ASSUMED FACTS", "CONFIDENCE", "DISCLAIMER"],
+    fr: ["DÉCISION", "RÈGLE APPLIQUÉE", "INTERPRÉTATION", "EXCEPTIONS ET CAS LIMITES", "FAITS SUPPOSÉS", "CONFIANCE", "AVERTISSEMENT"],
+    de: ["ENTSCHEIDUNG", "ANGEWANDTE REGEL", "AUSLEGUNG", "AUSNAHMEN UND GRENZFÄLLE", "ANGENOMMENE FAKTEN", "VERTRAUEN", "HINWEIS"],
+    pt: ["DECISÃO", "REGRA APLICADA", "INTERPRETAÇÃO", "EXCEÇÕES E CASOS ESPECIAIS", "FATOS PRESUMIDOS", "CONFIANÇA", "AVISO"],
+    it: ["DECISIONE", "REGOLA APPLICATA", "INTERPRETAZIONE", "ECCEZIONI E CASI LIMITE", "FATTI PRESUNTI", "AFFIDABILITÀ", "AVVERTENZA"],
+    ja: ["裁定", "適用規則", "解釈", "例外および特殊事例", "仮定された事実", "信頼度", "免責事項"],
+    jp: ["裁定", "適用規則", "解釈", "例外および特殊事例", "仮定された事実", "信頼度", "免責事項"],
+    ko: ["판정", "적용 규칙", "해석", "예외 및 특수 사례", "가정된 사실", "신뢰도", "고지"],
+    kr: ["판정", "적용 규칙", "해석", "예외 및 특수 사례", "가정된 사실", "신뢰도", "고지"]
+  };
+  return headers[code] || headers.es;
+}
+
 // ══════════════════════════════════════════════════════════════════════════
 // FASE 1 — Extraer hechos + assumed facts
 // POST /phase1   { description, lang, category }
@@ -2113,6 +2148,7 @@ It is recognized that there are ma`;
 app.post("/phase1", async (req, res) => {
   try {
     const { description, lang = "es", category = "" } = req.body;
+    const outputLanguage = getLanguageName(lang);
 
     if (!description || description.trim().length < 10) {
       return res.status(400).json({ error: "Description too short" });
@@ -2133,13 +2169,13 @@ CORRECT 2023 TERMINOLOGY (the terms "water hazard" and "lateral water hazard" we
 JSON structure:
 {
   "facts": [
-    { "id": 1, "text": "fact in language ${lang}", "key": "short_key" }
+    { "id": 1, "text": "fact in ${outputLanguage}", "key": "short_key" }
   ],
   "assumedFacts": [
-    "assumption the system makes that was NOT stated by user"
+    "assumption in ${outputLanguage} that the system makes that was NOT stated by user"
   ],
-  "detectedRule": "Rule number and name most likely applicable",
-  "category": "detected category"
+  "detectedRule": "rule number and name in ${outputLanguage}",
+  "category": "detected category in ${outputLanguage}"
 }
 
 Rules:
@@ -2148,7 +2184,9 @@ Rules:
 - NEVER restate stake color as a different hazard type. If user says "red stakes", the assumption is "red penalty area" — nothing more.
 - For ball in elevated position (tree, net, stands): include assumed fact "Reference point is the spot on the ground directly below where the ball rests".
 - detectedRule: cite the most likely rule using 2023 names (e.g. "Rule 17 – Penalty Areas", "Rule 19 – Unplayable Ball"). Never "Rule 17 – Water Hazards".
-- Write facts in language: ${lang}`;
+- Write EVERY human-readable value in the JSON in ${outputLanguage}. This includes facts, assumedFacts, detectedRule, and category.
+- Do not leave default assumptions in English unless ${outputLanguage} is English.
+- Use official 2023 terminology translated naturally into ${outputLanguage}; never use obsolete terms such as water hazard/lateral water hazard.`;
     const userContent = `Golf situation category: ${category || "general"}
 
 User description:
@@ -2205,6 +2243,8 @@ app.post("/ruling", async (req, res) => {
       category = "",
       lang = "es",
     } = req.body;
+    const outputLanguage = getLanguageName(lang);
+    const sectionHeaders = getRulingHeaders(lang);
 
     if (!confirmedFacts || confirmedFacts.length === 0) {
       return res.status(400).json({ error: "No confirmed facts provided" });
@@ -2242,30 +2282,30 @@ CRITICAL INSTRUCTIONS:
 5. Use official, neutral language. No "most common" recommendations.
 6. Always cite the specific Rule number and sub-section (e.g., Rule 19.2c).
 7. Confidence: assess 0-100 based on completeness of confirmed facts.
-8. Respond in language: ${lang}
+8. Respond entirely in ${outputLanguage}. This includes section headers, body text, assumptions, labels, and disclaimer. Do not mix English headers with non-English body text.
 
-Use EXACTLY these section headers:
+Use EXACTLY these translated section headers, and do not use the English header names unless the selected language is English:
 
-## RULING
+## ${sectionHeaders[0]}
 [State all available options. If player CAN play as it lies, list that first. Then list penalty relief options numbered.]
 
-## RULE APPLIED
-[Exact rule number, sub-section, and official name. E.g.: "Rule 19.2 – Relief Options for Unplayable Ball in General Area"]
+## ${sectionHeaders[1]}
+[Exact rule number, sub-section, and official name translated naturally into ${outputLanguage}. E.g. keep the rule number but translate the rule name.]
 
-## INTERPRETATION
+## ${sectionHeaders[2]}
 [2-3 sentences applying the rule to these specific confirmed facts. If elevated position: state the ground reference point explicitly.]
 
-## EXCEPTIONS & EDGE CASES
+## ${sectionHeaders[3]}
 [1-3 bullet points: conditions that would change this ruling if they applied]
 
-## ASSUMED FACTS
-[List system assumptions not stated by user]
+## ${sectionHeaders[4]}
+[List system assumptions not stated by user, translated into ${outputLanguage}]
 
-## CONFIDENCE
-[Number 0-100 — one sentence explanation]
+## ${sectionHeaders[5]}
+[Number 0-100 — one sentence explanation in ${outputLanguage}]
 
-## DISCLAIMER
-Final rulings in competition are determined by the Committee or an authorized referee. This analysis is based solely on the confirmed facts provided.`;
+## ${sectionHeaders[6]}
+[Write the competition disclaimer in ${outputLanguage}: final rulings in competition are determined by the Committee or an authorized referee; this analysis is based only on confirmed facts provided.]`;
 
     const userContent = `GOLF SITUATION: ${category || "General"}
 
@@ -2386,5 +2426,5 @@ app.get("/health", (req, res) => {
 });
 
 app.listen(PORT, () => {
- console.log(`FairPlay Rules API v3.4-phase1 on port ${PORT}`);
+ console.log(`FairPlay Rules API v3.5-lang on port ${PORT}`);
 });
