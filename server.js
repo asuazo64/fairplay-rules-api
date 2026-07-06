@@ -25,7 +25,7 @@ function buildKBContext(category, detectedRule) {
   }
   if (keys.length === 0) keys = ["17", "18", "19", "12", "16"];
   return keys.map((k) => KB[k]).filter(Boolean)
-    .map((r) => `### Regla — ${r.titulo}\n${r.texto}`).join("\n\n");
+    .map((r) => `### Regla — ${r.titulo}\n${r.texto}${r.aclaraciones ? `\n\n${r.aclaraciones}` : ""}`).join("\n\n");
 }
 const MODEL = "claude-haiku-4-5-20251001";
 
@@ -2426,5 +2426,5 @@ app.get("/health", (req, res) => {
 });
 
 app.listen(PORT, () => {
- console.log(`FairPlay Rules API v3.5-lang on port ${PORT}`);
+ console.log(`FairPlay Rules API v3.6-aclaraciones on port ${PORT}`);
 });
