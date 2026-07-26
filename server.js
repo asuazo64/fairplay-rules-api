@@ -12,17 +12,80 @@ app.use(express.json({ limit: "10mb" }));
 
 const client = new Anthropic({ apiKey: ANTHROPIC_API_KEY, maxRetries: 4, timeout: 60000 });
 const KB = require("./golf_kb.json");
+// Etiquetas de categoría -> reglas. Claves normalizadas (minúsculas, sin acentos).
+// IMPORTANTE: el frontend usa 9 botones fijos cuyas etiquetas literales deben
+// preservarse exactas ("obstruction", "bunker", etc.) — no son texto libre traducido.
 const CATEGORY_RULES = {
-  "Penalty Area": ["17"], "Bunker": ["12"], "Bola Perdida": ["18"], "Lost Ball": ["18"],
-  "Obstruction": ["15", "16"], "Ball Moved": ["9"], "Unplayable": ["19"],
-  "Green": ["13"], "Match Play": ["3", "21"], "Local Rule": [],
+  // Etiquetas EXACTAS de los 9 botones del frontend.
+  "penalty area": ["17"], "bunker": ["12"], "bola perdida": ["18"], "lost ball": ["18"],
+  "obstruction": ["15", "16"], "ball moved": ["9"], "unplayable": ["19"],
+  "green": ["13"], "match play": ["3", "21"], "local rule": [],
+  // Cobertura ampliada (ES/EN) para el resto de familias de reglas (1-25),
+  // usada cuando llega un detectedRule/categoría fuera del set de botones fijos.
+  "conducta": ["1"], "conduct": ["1"], "etiqueta": ["1"], "descalificacion": ["1"],
+  "definiciones": ["2"], "campo": ["2"], "definitions": ["2"],
+  "competicion": ["3"], "handicap": ["3"], "tarjeta": ["3"], "concesion": ["3"], "scoring": ["3"],
+  "equipo": ["4"], "palos": ["4"], "clubs": ["4"], "equipment": ["4"],
+  "practica": ["5"], "hora de salida": ["5"], "ritmo": ["5"], "practice": ["5"], "pace": ["5"],
+  "orden de juego": ["6"], "bola equivocada": ["6"], "area de salida": ["6"], "wrong ball": ["6"], "tee": ["6"],
+  "busqueda": ["7"], "search": ["7"],
+  "mejorar": ["8"], "improve": ["8"], "condiciones que afectan": ["8"],
+  "bola movida": ["9"], "bola en reposo": ["9"],
+  "consejo": ["10"], "caddie": ["10"], "advice": ["10"], "alineacion": ["10"],
+  "bola en movimiento": ["11"], "ball in motion": ["11"], "desviada": ["11"], "deflected": ["11"],
+  "astabandera": ["13"], "bandera": ["13"], "flagstick": ["13"], "putting": ["13"],
+  "dropear": ["14"], "drop": ["14"], "recolocar": ["14"], "procedimiento": ["14"], "lugar equivocado": ["14"], "wrong place": ["14"],
+  "impedimento suelto": ["15"], "obstruccion movible": ["15"], "loose": ["15"], "movable": ["15"],
+  "condicion anormal": ["16"], "obstruccion inamovible": ["16"], "agua temporal": ["16"], "terreno en reparacion": ["16"], "bola enterrada": ["16"], "abnormal": ["16"], "immovable": ["16"], "embedded": ["16"],
+  "area de penalidad": ["17"], "penalizacion": ["17"], "penalidad": ["17"],
+  "fuera de limites": ["18"], "provisional": ["18"], "golpe y distancia": ["18"], "out of bounds": ["18"], "stroke and distance": ["18"],
+  "injugable": ["19"],
+  "comite": ["20"], "arbitro": ["20"], "disputa": ["20"], "referee": ["20"],
+  "stableford": ["21"], "maximo de golpes": ["21"], "otras formas": ["21"],
+  "foursome": ["22"], "four-ball": ["23"], "fourball": ["23"],
+  "equipos": ["24"], "team": ["24"],
+  "discapacidad": ["25"], "disability": ["25"], "modificaciones": ["25"],
+  "regla local": [],
 };
-function buildKBContext(category, detectedRule) {
-  let keys = CATEGORY_RULES[category] || [];
-  if (keys.length === 0 && detectedRule) {
-    const m = String(detectedRule).match(/\b(\d{1,2})\b/);
-    if (m && KB[m[1]]) keys = [m[1]];
+
+function normalizeCat(s) {
+  return String(s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+}
+
+// Extrae números de regla válidos (1-25) de un texto en cualquier idioma.
+function extractRuleNumbers(text) {
+  const out = [];
+  if (!text) return out;
+  const re = /\b([1-9]|1\d|2[0-5])\b/g;
+  let m;
+  while ((m = re.exec(String(text))) !== null) {
+    const n = m[1];
+    if (KB[n] && !out.includes(n)) out.push(n);
   }
+  return out;
+}
+
+function buildKBContext(category, detectedRule) {
+  // 1) PRIMARIA (confiable, independiente del idioma): número de regla en detectedRule.
+  let keys = extractRuleNumbers(detectedRule);
+  // 2) Si category trae un número de regla (algunos flujos lo incluyen), úsalo.
+  if (keys.length === 0) keys = extractRuleNumbers(category);
+  // 3) SECUNDARIA: etiqueta de categoría normalizada (ES/EN). Match exacto primero;
+  //    luego subcadena, probando primero los labels más largos (más específicos).
+  if (keys.length === 0) {
+    const norm = normalizeCat(category);
+    if (norm) {
+      if (CATEGORY_RULES[norm]) {
+        keys = CATEGORY_RULES[norm].slice();
+      } else {
+        const labels = Object.keys(CATEGORY_RULES).sort((a, b) => b.length - a.length);
+        for (const label of labels) {
+          if (label && norm.includes(label)) { keys = CATEGORY_RULES[label].slice(); break; }
+        }
+      }
+    }
+  }
+  // 4) ÚLTIMO RECURSO: set por defecto amplio.
   if (keys.length === 0) keys = ["17", "18", "19", "12", "16"];
   return keys.map((k) => KB[k]).filter(Boolean)
     .map((r) => `### Regla — ${r.titulo}\n${r.texto}${r.aclaraciones ? `\n\n${r.aclaraciones}` : ""}`).join("\n\n");
@@ -2230,201 +2293,4 @@ app.post("/phase2", async (req, res) => {
   }
 });
 
-// ══════════════════════════════════════════════════════════════════════════
-// FASE 3 — Ruling oficial basado en KB de reglas + hechos confirmados
-// POST /ruling   { confirmedFacts, deniedFacts, assumedFacts, category, lang }
-// ══════════════════════════════════════════════════════════════════════════
-app.post("/ruling", async (req, res) => {
-  try {
-    const {
-      confirmedFacts = [],
-      deniedFacts = [],
-      assumedFacts = [],
-      category = "",
-      lang = "es",
-    } = req.body;
-    const outputLanguage = getLanguageName(lang);
-    const sectionHeaders = getRulingHeaders(lang);
-
-    if (!confirmedFacts || confirmedFacts.length === 0) {
-      return res.status(400).json({ error: "No confirmed facts provided" });
-    }
-
-    addLog("ruling_req", {
-      confirmed: confirmedFacts.length,
-      denied: deniedFacts.length,
-      assumed: assumedFacts.length,
-      lang, category,
-    });
-
-    const confirmedList = confirmedFacts
-      .map((f, i) => `${i + 1}. ${f.fact || f.text || f}`)
-      .join("\n");
-
-    const deniedList = deniedFacts.length > 0
-      ? deniedFacts.map((f, i) => `${i + 1}. ${f.fact || f.text || f}`).join("\n")
-      : "None";
-
-    const assumedList = assumedFacts.length > 0
-      ? assumedFacts.map((a, i) => `${i + 1}. ${a}`).join("\n")
-      : "Standard competition rules apply. No local rules provided.";
-
-    const system = `You are an official golf rules referee using the 2023 Official Rules of Golf (R&A/USGA).
-
-KNOWLEDGE BASE — use this as your primary reference:
-${buildKBContext(category)}
-
-CRITICAL INSTRUCTIONS:
-1. Base ruling ONLY on confirmed facts. Never invent facts.
-2. NEVER automatically declare the ball unplayable — the player decides. State: "The player may play the ball as it lies if they choose."
-3. For balls in elevated positions (tree, net, stands, fence): the reference point for ALL relief options is the spot on the GROUND directly below where the ball rests — never the elevated position itself.
-4. Present ALL available options with their rule citations. Do not pre-select one option.
-5. Use official, neutral language. No "most common" recommendations.
-6. Always cite the specific Rule number and sub-section (e.g., Rule 19.2c).
-7. Confidence: assess 0-100 based on completeness of confirmed facts.
-8. Respond entirely in ${outputLanguage}. This includes section headers, body text, assumptions, labels, and disclaimer. Do not mix English headers with non-English body text.
-
-Use EXACTLY these translated section headers, and do not use the English header names unless the selected language is English:
-
-## ${sectionHeaders[0]}
-[State all available options. If player CAN play as it lies, list that first. Then list penalty relief options numbered.]
-
-## ${sectionHeaders[1]}
-[Exact rule number, sub-section, and official name translated naturally into ${outputLanguage}. E.g. keep the rule number but translate the rule name.]
-
-## ${sectionHeaders[2]}
-[2-3 sentences applying the rule to these specific confirmed facts. If elevated position: state the ground reference point explicitly.]
-
-## ${sectionHeaders[3]}
-[1-3 bullet points: conditions that would change this ruling if they applied]
-
-## ${sectionHeaders[4]}
-[List system assumptions not stated by user, translated into ${outputLanguage}]
-
-## ${sectionHeaders[5]}
-[Number 0-100 — one sentence explanation in ${outputLanguage}]
-
-## ${sectionHeaders[6]}
-[Write the competition disclaimer in ${outputLanguage}: final rulings in competition are determined by the Committee or an authorized referee; this analysis is based only on confirmed facts provided.]`;
-
-    const userContent = `GOLF SITUATION: ${category || "General"}
-
-CONFIRMED FACTS:
-${confirmedList}
-
-DENIED FACTS:
-${deniedList}
-
-SYSTEM ASSUMPTIONS:
-${assumedList}
-
-Deliver the official ruling.`;
-
-    const ruling = await callClaude(system, userContent, 1600);
-
-    addLog("ruling_ok", { len: ruling.length });
-    res.json({ ruling, confirmedCount: confirmedFacts.length });
-  } catch (err) {
-    addLog("ruling_err", { msg: err.message });
-    res.status(500).json({ error: err.message });
-  }
-});
-
-
-// ══════════════════════════════════════════════════════════════════════════
-// /api/rules — Endpoint unificado para el frontend de chat
-// POST /api/rules  { model, max_tokens, system, messages }
-// Proxy directo a Claude — mismo formato que la API de Anthropic
-// ══════════════════════════════════════════════════════════════════════════
-app.post("/api/rules", async (req, res) => {
-  try {
-    const { model, max_tokens, system, messages } = req.body;
-
-    if (!messages || messages.length === 0) {
-      return res.status(400).json({ error: "No messages provided" });
-    }
-
-    addLog("api_rules_req", {
-      msgCount: messages.length,
-      lastMsg: messages[messages.length - 1]?.content?.slice(0, 80)
-    });
-
-    const response = await client.messages.create({
-      model: model || MODEL,
-      max_tokens: max_tokens || 1500,
-      system: system || "",
-      messages: messages,
-    });
-
-    addLog("api_rules_ok", { len: response.content[0]?.text?.length });
-    res.json(response);
-  } catch (err) {
-    addLog("api_rules_err", { msg: err.message });
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ══════════════════════════════════════════════════════════════════════════
-// ADMIN PANEL
-// ══════════════════════════════════════════════════════════════════════════
-app.get("/admin", (req, res) => {
-  if (!ADMIN_PASSWORD) return res.status(503).send("Admin deshabilitado: configura ADMIN_PASSWORD en Render");
-  const { password } = req.query;
-  if (password !== ADMIN_PASSWORD) {
-    return res.status(401).send(`
-      <html><body style="font-family:sans-serif;padding:2rem;background:#0f0f0f;color:#eee">
-        <h2 style="color:#4ade80">🔒 FairPlay Admin</h2>
-        <form style="margin-top:1rem">
-          <input name="password" type="password" placeholder="Password"
-            style="padding:.6rem;font-size:1rem;background:#1a1a1a;border:1px solid #333;color:#eee;border-radius:4px"/>
-          <button type="submit"
-            style="padding:.6rem 1.2rem;margin-left:.5rem;background:#4ade80;color:#000;border:none;border-radius:4px;cursor:pointer">
-            Enter
-          </button>
-        </form>
-      </body></html>
-    `);
-  }
-  const rows = logs.map((l) => `
-    <tr>
-      <td style="color:#888;white-space:nowrap;font-size:11px">${l.ts}</td>
-      <td><b style="color:#4ade80">${l.type}</b></td>
-      <td><pre style="margin:0;font-size:11px;max-width:520px;overflow-x:auto">${JSON.stringify(l.data, null, 2)}</pre></td>
-    </tr>`).join("");
-
-  res.send(`
-    <html>
-    <head>
-      <title>FairPlay Admin</title>
-      <style>
-        body{font-family:sans-serif;padding:1rem;background:#0a0a0a;color:#eee}
-        h2{color:#4ade80;margin-bottom:.3rem}
-        table{border-collapse:collapse;width:100%;font-size:12px;margin-top:1rem}
-        th{background:#1a1a1a;padding:.5rem .7rem;text-align:left;color:#aaa}
-        td{border-bottom:1px solid #1a1a1a;padding:.5rem .7rem;vertical-align:top}
-        pre{background:#111;padding:.4rem;border-radius:4px;color:#ccc}
-        a{color:#4ade80}
-      </style>
-      <meta http-equiv="refresh" content="30">
-    </head>
-    <body>
-      <h2>⚖️ FairPlay Rules — Admin</h2>
-      <p style="color:#666;font-size:12px">${logs.length} entries · auto-refresh 30s ·
-        <a href="/admin?password=${password}">Refresh</a> · <a href="/health">Health</a>
-      </p>
-      <table>
-        <tr><th>Timestamp</th><th>Event</th><th>Data</th></tr>
-        ${rows || '<tr><td colspan="3" style="color:#555;padding:1rem">No logs yet</td></tr>'}
-      </table>
-    </body></html>
-  `);
-});
-
-// ── Health ────────────────────────────────────────────────────────────────
-app.get("/health", (req, res) => {
-  res.json({ status: "ok", model: MODEL, kbSize: GOLF_KB.length, logs: logs.length, uptime: process.uptime() });
-});
-
-app.listen(PORT, () => {
- console.log(`FairPlay Rules API v3.6-aclaraciones on port ${PORT}`);
-});
+// ════════════════════════════════════════════════════════════════
