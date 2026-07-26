@@ -66,27 +66,33 @@ function extractRuleNumbers(text) {
 }
 
 function buildKBContext(category, detectedRule) {
-  // 1) PRIMARIA (confiable, independiente del idioma): número de regla en detectedRule.
-  let keys = extractRuleNumbers(detectedRule);
-  // 2) Si category trae un número de regla (algunos flujos lo incluyen), úsalo.
-  if (keys.length === 0) keys = extractRuleNumbers(category);
-  // 3) SECUNDARIA: etiqueta de categoría normalizada (ES/EN). Match exacto primero;
+  // 1) Número de regla en detectedRule (puede venir mal etiquetado por /phase1).
+  let numKeys = extractRuleNumbers(detectedRule);
+  if (numKeys.length === 0) numKeys = extractRuleNumbers(category);
+
+  // 2) Etiqueta de categoría normalizada (ES/EN). Match exacto primero;
   //    luego subcadena, probando primero los labels más largos (más específicos).
-  if (keys.length === 0) {
-    const norm = normalizeCat(category);
-    if (norm) {
-      if (CATEGORY_RULES[norm]) {
-        keys = CATEGORY_RULES[norm].slice();
-      } else {
-        const labels = Object.keys(CATEGORY_RULES).sort((a, b) => b.length - a.length);
-        for (const label of labels) {
-          if (label && norm.includes(label)) { keys = CATEGORY_RULES[label].slice(); break; }
-        }
+  let catKeys = [];
+  const norm = normalizeCat(category);
+  if (norm) {
+    if (CATEGORY_RULES[norm]) {
+      catKeys = CATEGORY_RULES[norm].slice();
+    } else {
+      const labels = Object.keys(CATEGORY_RULES).sort((a, b) => b.length - a.length);
+      for (const label of labels) {
+        if (label && norm.includes(label)) { catKeys = CATEGORY_RULES[label].slice(); break; }
       }
     }
   }
-  // 4) ÚLTIMO RECURSO: set por defecto amplio.
+
+  // 3) UNIÓN, no prioridad: un número mal detectado ya no descarta el match por categoría.
+  //    Esto corrige el caso donde /phase1 etiqueta la regla equivocada (ej. "15" en vez de "16")
+  //    y esa etiqueta impedía que se recuperara la regla realmente aplicable.
+  let keys = Array.from(new Set([...numKeys, ...catKeys]));
+
+  // 4) ÚLTIMO RECURSO: set por defecto amplio, solo si no hubo ninguna señal.
   if (keys.length === 0) keys = ["17", "18", "19", "12", "16"];
+
   return keys.map((k) => KB[k]).filter(Boolean)
     .map((r) => `### Regla — ${r.titulo}\n${r.texto}${r.aclaraciones ? `\n\n${r.aclaraciones}` : ""}`).join("\n\n");
 }
@@ -2206,18 +2212,25 @@ function getRulingHeaders(lang) {
 
 // ══════════════════════════════════════════════════════════════════════════
 // FASE 1 — Extraer hechos + assumed facts
-// POST /phase1   { description, lang, category }
+// POST /phase1   { description, lang, category, localRule }
 // ══════════════════════════════════════════════════════════════════════════
 app.post("/phase1", async (req, res) => {
   try {
-    const { description, lang = "es", category = "" } = req.body;
+    const { description, lang = "es", category = "", localRule = "" } = req.body;
     const outputLanguage = getLanguageName(lang);
 
     if (!description || description.trim().length < 10) {
       return res.status(400).json({ error: "Description too short" });
     }
 
-    addLog("phase1_req", { lang, category, len: description.length });
+    // Normalize: treat the "no special local rule" option (in any supported language) as "none"
+    const noLocalRulePhrases = [
+      "sin regla local especial", "no special local rule", "aucune règle locale spéciale",
+      "keine besondere platzregel", "sem regra local especial", "nessuna regola locale speciale"
+    ];
+    const localRuleActive = localRule && !noLocalRulePhrases.includes(localRule.trim().toLowerCase());
+
+    addLog("phase1_req", { lang, category, localRule, len: description.length });
 
     const system = `You are an expert golf rules analyst using the Official Rules of Golf 2023 (R&A/USGA).
 Extract objective facts AND system assumptions from the user description of a golf rules situation.
@@ -2243,14 +2256,18 @@ JSON structure:
 
 Rules:
 - facts: 3-8 items, each a simple objective statement taken DIRECTLY from user input. Do not add facts the user did not state.
-- assumedFacts: keep MINIMAL. Only include "Standard competition rules apply" and "No local rules provided". Do NOT assume the type of penalty area, hazard, out of bounds, ball position, or anything about how the area is defined unless the user explicitly stated it.
+- assumedFacts: keep MINIMAL. Always include "Standard competition rules apply". Then, if a local rule is in effect (see "Active local rule" below), include an assumption stating that local rule is in effect and, if it is clearly relevant to the situation described, briefly note how (without inventing rule text you don't know). If no local rule is in effect, include "No local rules provided" instead. Do NOT assume the type of penalty area, hazard, out of bounds, ball position, or anything about how the area is defined unless the user explicitly stated it.
 - NEVER restate stake color as a different hazard type. If user says "red stakes", the assumption is "red penalty area" — nothing more.
 - For ball in elevated position (tree, net, stands): include assumed fact "Reference point is the spot on the ground directly below where the ball rests".
 - detectedRule: cite the most likely rule using 2023 names (e.g. "Rule 17 – Penalty Areas", "Rule 19 – Unplayable Ball"). Never "Rule 17 – Water Hazards".
+- Do NOT confuse these commonly-mixed-up rule pairs when choosing detectedRule:
+  • Rule 15 = relief from LOOSE IMPEDIMENTS and MOVABLE obstructions only (things a player can move with reasonable effort, e.g. a rake, cup, bag). Rule 16 = relief from ABNORMAL COURSE CONDITIONS, which includes FIXED/IMMOVABLE artificial objects (e.g. sprinkler heads, cart paths, drainage covers), ground under repair, temporary water, and animal holes. A fixed sprinkler head is Rule 16, never Rule 15.
+  • Rule 5.5b = practice strokes DURING a round, between holes (putting/chipping near the green just completed). Rule 5.6 = unreasonable delay of play / pace of play. A practice stroke question is 5.5b, not 5.6.
 - Write EVERY human-readable value in the JSON in ${outputLanguage}. This includes facts, assumedFacts, detectedRule, and category.
 - Do not leave default assumptions in English unless ${outputLanguage} is English.
 - Use official 2023 terminology translated naturally into ${outputLanguage}; never use obsolete terms such as water hazard/lateral water hazard.`;
     const userContent = `Golf situation category: ${category || "general"}
+Active local rule: ${localRuleActive ? localRule : "None"}
 
 User description:
 ${description}
@@ -2493,5 +2510,5 @@ app.get("/health", (req, res) => {
 });
 
 app.listen(PORT, () => {
- console.log(`FairPlay Rules API v3.8-guardrails on port ${PORT}`);
+ console.log(`FairPlay Rules API v3.10-retrieval-union on port ${PORT}`);
 });
