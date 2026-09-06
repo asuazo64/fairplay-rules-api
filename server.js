@@ -2549,9 +2549,9 @@ app.get("/admin", (req, res) => {
 
 // ── Health ────────────────────────────────────────────────────────────────
 app.get("/health", (req, res) => {
-  res.json({ status: "ok", model: MODEL, kbSize: GOLF_KB.length, logs: logs.length, uptime: process.uptime() });
+  res.json({ status: "ok", version: "v3.11-fix-8.1c-6.3c-followup", model: MODEL, kbSize: GOLF_KB.length, logs: logs.length, uptime: process.uptime() });
 });
 
 app.listen(PORT, () => {
- console.log(`FairPlay Rules API v3.10-retrieval-union on port ${PORT}`);
+ console.log(`FairPlay Rules API v3.11-fix-8.1c-6.3c-followup on port ${PORT}`);
 });
