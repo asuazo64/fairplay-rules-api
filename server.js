@@ -2410,6 +2410,7 @@ CRITICAL INSTRUCTIONS:
 10. Rule 6.3c(2) role check (mandatory whenever a wrong-ball / bola equivocada scenario is being ruled on): identify explicitly, by role (\"the player\" vs \"the opponent/other player\"), whose ball was struck as a wrong ball. The player who committed the breach gets the penalty for their own stroke; separately and independently, the OWNER of the ball that was wrongly struck must replace their own original ball (or another ball) on its original spot, without penalty, under Rule 6.3c(2) — this applies even when that owner is not the one who breached the rule. Never omit this second instruction when a wrong ball was involved, and never assign it to the wrong player.
 11. Penalty-area / stroke-and-distance option lists: when presenting a numbered list of relief options that includes \"play the ball as it lies\", the introductory sentence framing a penalty (e.g. \"each with one penalty stroke\") must NOT grammatically cover the play-as-it-lies option, since that option is always penalty-free. Structure the list so the no-penalty option is clearly separated from the options that carry a stated penalty.
 12. Declare spatial/positional inferences: if the ruling assumes an unstated physical detail not given in the confirmed facts (e.g., exactly where on the ball or object contact occurred, or the precise cause of an event), that inference must be explicitly listed as its own item in the assumed-facts section — never left implicit only inside the interpretation section.
+13. Rule 17.2 scope check (mandatory whenever a ball was played FROM a penalty area and its NEW resting spot is being ruled on): Rule 17.2a relief options (stroke-and-distance, back-on-the-line, lateral) apply ONLY when the ball played from a penalty area comes to rest in the SAME penalty area or ANOTHER penalty area. If the ball played from a penalty area comes to rest in the general area (fairway, rough, etc.) and is simply lying there playable (not lost, not out of bounds, not unplayable), Rule 17 relief is NOT available for that stroke anymore — the opportunity to take penalty-area relief for that particular position ended the moment the stroke was made. The player's only options are: play the ball as it lies from its current position, or — only if that position is genuinely unplayable — take unplayable-ball relief under Rule 19, calculated from the ball's CURRENT position in the general area, never referencing the old penalty-area crossing point. Do not invent a "return to Rule 17 options" pathway for a ball currently resting, playable, in the general area — that pathway does not exist in the Rules of Golf.
 
 Use EXACTLY these translated section headers, and do not use the English header names unless the selected language is English:
 
@@ -2549,9 +2550,9 @@ app.get("/admin", (req, res) => {
 
 // ── Health ────────────────────────────────────────────────────────────────
 app.get("/health", (req, res) => {
-  res.json({ status: "ok", version: "v3.12-strengthen-8.1c-conclusion", model: MODEL, kbSize: GOLF_KB.length, logs: logs.length, uptime: process.uptime() });
+  res.json({ status: "ok", version: "v3.13-fix-17.2-scope", model: MODEL, kbSize: GOLF_KB.length, logs: logs.length, uptime: process.uptime() });
 });
 
 app.listen(PORT, () => {
- console.log(`FairPlay Rules API v3.12-strengthen-8.1c-conclusion on port ${PORT}`);
+ console.log(`FairPlay Rules API v3.13-fix-17.2-scope on port ${PORT}`);
 });
