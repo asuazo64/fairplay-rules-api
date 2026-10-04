@@ -2460,39 +2460,6 @@ Deliver the official ruling.`;
 
 
 // ══════════════════════════════════════════════════════════════════════════
-// /api/rules — Endpoint unificado para el frontend de chat
-// POST /api/rules  { model, max_tokens, system, messages }
-// Proxy directo a Claude — mismo formato que la API de Anthropic
-// ══════════════════════════════════════════════════════════════════════════
-app.post("/api/rules", async (req, res) => {
-  try {
-    const { model, max_tokens, system, messages } = req.body;
-
-    if (!messages || messages.length === 0) {
-      return res.status(400).json({ error: "No messages provided" });
-    }
-
-    addLog("api_rules_req", {
-      msgCount: messages.length,
-      lastMsg: messages[messages.length - 1]?.content?.slice(0, 80)
-    });
-
-    const response = await client.messages.create({
-      model: model || MODEL,
-      max_tokens: max_tokens || 1500,
-      system: system || "",
-      messages: messages,
-    });
-
-    addLog("api_rules_ok", { len: response.content[0]?.text?.length });
-    res.json(response);
-  } catch (err) {
-    addLog("api_rules_err", { msg: err.message });
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ══════════════════════════════════════════════════════════════════════════
 // ADMIN PANEL
 // ══════════════════════════════════════════════════════════════════════════
 app.get("/admin", (req, res) => {
@@ -2550,9 +2517,9 @@ app.get("/admin", (req, res) => {
 
 // ── Health ────────────────────────────────────────────────────────────────
 app.get("/health", (req, res) => {
-  res.json({ status: "ok", version: "v3.13-fix-17.2-scope", model: MODEL, kbSize: GOLF_KB.length, logs: logs.length, uptime: process.uptime() });
+  res.json({ status: "ok", version: "v3.14-remove-api-proxy", model: MODEL, kbSize: GOLF_KB.length, logs: logs.length, uptime: process.uptime() });
 });
 
 app.listen(PORT, () => {
- console.log(`FairPlay Rules API v3.13-fix-17.2-scope on port ${PORT}`);
+ console.log(`FairPlay Rules API v3.14-remove-api-proxy on port ${PORT}`);
 });
