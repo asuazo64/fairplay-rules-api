@@ -12,6 +12,31 @@ app.use(express.json({ limit: "10mb" }));
 
 const client = new Anthropic({ apiKey: ANTHROPIC_API_KEY, maxRetries: 4, timeout: 60000 });
 const KB = require("./golf_kb.json");
+
+// ── Sección WHS (Sistema Mundial de Hándicap) ─────────────────────────────
+// Resumen redactado en palabras propias (no es texto oficial de USGA/R&A).
+KB.whs = {
+  titulo: "World Handicap System (WHS) — summary of key handicapping rules",
+  texto: `IMPORTANT DISTINCTION: The Rules of Golf govern play and scoring in a competition. The World Handicap System (Rules of Handicapping, USGA/R&A) governs how scores are ADJUSTED and POSTED for handicap purposes. In a stroke play competition the scorecard records the actual number of strokes; handicap adjustments such as net double bogey apply only to the score posted to the player's handicap record (and in casual rounds a player may pick up once reaching that maximum).
+
+HANDICAP INDEX: a portable measure of a player's demonstrated ability, calculated as the average of the lowest 8 of the player's most recent 20 score differentials (with safeguards such as exceptional score reduction and soft/hard caps).
+
+SCORE DIFFERENTIAL = (113 / Slope Rating) x (Adjusted Gross Score - Course Rating - playing conditions adjustment).
+
+COURSE HANDICAP = Handicap Index x (Slope Rating / 113) + (Course Rating - Par), rounded to a whole number. It is the number of strokes the player receives on that course from that set of tees.
+
+PLAYING HANDICAP = Course Handicap x handicap allowance set by the Committee for the format (commonly recommended: 95% for individual stroke play, 100% for individual match play).
+
+MAXIMUM HOLE SCORE FOR HANDICAP PURPOSES — NET DOUBLE BOGEY = par of the hole + 2 + any handicap strokes the player receives on that hole, based on the player's COURSE HANDICAP and the hole's stroke index (handicap stroke allocation).
+- Course Handicap 1-18: one stroke on each hole whose stroke index is less than or equal to the Course Handicap. Example: Course Handicap 16 -> par + 3 on the holes with stroke index 1 to 16, and par + 2 on the holes with stroke index 17 and 18.
+- Course Handicap above 18: one stroke on every hole plus a second stroke on the holes with stroke index 1 to (Course Handicap - 18). Example: Course Handicap 20 -> par + 4 on stroke index 1 and 2, par + 3 on the rest.
+- Plus handicap (e.g. +2): the player GIVES strokes starting from stroke index 18 upward, so the maximum on those holes is par + 1.
+- A player who has not yet established a Handicap Index: maximum score of par + 5 on any hole.
+- Hole not played: record net par (par + handicap strokes received).
+- Hole started but not holed out: record the most likely score, never higher than net double bogey.
+
+If the user gives "handicap 16" without saying whether it is a Handicap Index or a Course Handicap, state the assumption and explain that a Handicap Index must first be converted to a Course Handicap for that course and tees.`,
+};
 // Etiquetas de categoría -> reglas. Claves normalizadas (minúsculas, sin acentos).
 // IMPORTANTE: el frontend usa 9 botones fijos cuyas etiquetas literales deben
 // preservarse exactas ("obstruction", "bunker", etc.) — no son texto libre traducido.
@@ -24,7 +49,7 @@ const CATEGORY_RULES = {
   // usada cuando llega un detectedRule/categoría fuera del set de botones fijos.
   "conducta": ["1"], "conduct": ["1"], "etiqueta": ["1"], "descalificacion": ["1"],
   "definiciones": ["2"], "campo": ["2"], "definitions": ["2"],
-  "competicion": ["3"], "handicap": ["3"], "tarjeta": ["3"], "concesion": ["3"], "scoring": ["3"],
+  "competicion": ["3"], "handicap": ["3", "whs"], "doble bogey": ["whs"], "double bogey": ["whs"], "whs": ["whs"], "tarjeta": ["3"], "concesion": ["3"], "scoring": ["3"],
   "equipo": ["4"], "palos": ["4"], "clubs": ["4"], "equipment": ["4"],
   "practica": ["5"], "hora de salida": ["5"], "ritmo": ["5"], "practice": ["5"], "pace": ["5"],
   "orden de juego": ["6"], "bola equivocada": ["6"], "area de salida": ["6"], "wrong ball": ["6"], "tee": ["6"],
@@ -104,6 +129,10 @@ function buildKBContext(category, detectedRule, factsText = "") {
   //     etiquetado otra regla (ej. Regla 16 por error).
   if (normalizeCat(factsText).includes("bunker")) {
     keys = Array.from(new Set([...keys, "12", "19"]));
+  }
+  // FIX (hándicap): si los hechos hablan de hándicap, cargar la sección WHS.
+  if (/handicap|double bogey|doble bogey/.test(normalizeCat(factsText))) {
+    keys = Array.from(new Set([...keys, "whs"]));
   }
 
   // 4) ÚLTIMO RECURSO: set por defecto amplio, solo si no hubo ninguna señal.
@@ -2303,6 +2332,7 @@ Rules:
   • Rule 5.5b = practice strokes DURING a round, between holes (putting/chipping near the green just completed). Rule 5.6 = unreasonable delay of play / pace of play. A practice stroke question is 5.5b, not 5.6.
   • Rule 8.1a = a player DELIBERATELY bends, moves, or breaks a growing/attached natural object (branch, grass) or a fixed object to improve their stance, swing, line of play, or line of sight to the target — even if nothing is broken and even if the object is released/restored before the stroke (see Rule 8.1c, which can eliminate the penalty). Rule 15.1a = removing a LOOSE impediment (already detached, e.g. a stick on the ground) or bending/moving something ONLY as part of fairly SEARCHING for a ball. If the user bent, moved, or broke a branch/plant to see or swing better — and was NOT searching for a lost ball — detectedRule is Rule 8.1a (with Rule 8.1c as a likely relevant exception), never Rule 15.
   • Bunker conditions are NOT abnormal course conditions: a footprint, rake mark, uneven or loose sand, or a ball sitting in its own pitch mark in the sand of a bunker is simply part of the bunker. The detectedRule is "Rule 12 – Bunkers" (with Rule 19.3 unplayable ball as the relief option), NEVER Rule 16. Never add an assumedFact claiming such a condition is an abnormal course condition. Rule 16 applies in a bunker ONLY if the user states ground under repair, temporary water, an animal hole, or an immovable obstruction.
+  • Questions about handicaps, maximum score per hole for handicap purposes, posting scores, net double bogey, Handicap Index or Course Handicap belong to the World Handicap System (WHS), not to the Rules of Golf. Use detectedRule "World Handicap System – Rule 3.1 (net double bogey)" or similar, and include the word "handicap" in category.
 - Write EVERY human-readable value in the JSON in ${outputLanguage}. This includes facts, assumedFacts, detectedRule, and category.
 - Do not leave default assumptions in English unless ${outputLanguage} is English.
 - Use official 2023 terminology translated naturally into ${outputLanguage}; never use obsolete terms such as water hazard/lateral water hazard.`;
@@ -2421,6 +2451,9 @@ CRITICAL INSTRUCTIONS:
 12. Declare spatial/positional inferences: if the ruling assumes an unstated physical detail not given in the confirmed facts (e.g., exactly where on the ball or object contact occurred, or the precise cause of an event), that inference must be explicitly listed as its own item in the assumed-facts section — never left implicit only inside the interpretation section.
 13. Rule 17.2 scope check (mandatory whenever a ball was played FROM a penalty area and its NEW resting spot is being ruled on): Rule 17.2a relief options (stroke-and-distance, back-on-the-line, lateral) apply ONLY when the ball played from a penalty area comes to rest in the SAME penalty area or ANOTHER penalty area. If the ball played from a penalty area comes to rest in the general area (fairway, rough, etc.) and is simply lying there playable (not lost, not out of bounds, not unplayable), Rule 17 relief is NOT available for that stroke anymore — the opportunity to take penalty-area relief for that particular position ended the moment the stroke was made. The player's only options are: play the ball as it lies from its current position, or — only if that position is genuinely unplayable — take unplayable-ball relief under Rule 19, calculated from the ball's CURRENT position in the general area, never referencing the old penalty-area crossing point. Do not invent a "return to Rule 17 options" pathway for a ball currently resting, playable, in the general area — that pathway does not exist in the Rules of Golf.
 14. Bunker condition check (mandatory whenever the ball is in a bunker): a footprint, rake mark, uneven or loose sand, or the ball's own pitch mark in the sand is NOT an abnormal course condition — it is part of the bunker, and there is NO free relief for it, even if a SYSTEM ASSUMPTION says otherwise (ignore such an assumption and correct it in the assumed-facts section). In that case the options are: (a) play the ball as it lies under Rule 12, without improving conditions (Rule 12.2b, Rule 8.1); or (b) declare the ball unplayable under Rule 19.3: stroke-and-distance, back-on-the-line relief in the bunker, or lateral relief in the bunker (each 1 penalty stroke), or back-on-the-line relief outside the bunker for a total of 2 penalty strokes (Rule 19.3b). Only apply Rule 16.1c if the confirmed facts state ground under repair, temporary water, an animal hole, or an immovable obstruction in the bunker. In the exceptions section for this situation, do NOT invent exceptions: there is no rule letting the Committee grant free relief after the fact for a footprint, even one left by course staff (a Committee can only mark an area as ground under repair in advance). Under Rule 12.1 a ball is in the bunker when any part of it touches sand inside the bunker edge, so do not say the options change because the ball is partly outside the bunker.
+15. Handicap questions (mandatory whenever the question is about handicaps, maximum hole scores for handicap purposes, or posting scores): answer under the World Handicap System section of the KNOWLEDGE BASE, not only under the Rules of Golf. Explain net double bogey (par + 2 + handicap strokes received on the hole, based on Course Handicap and stroke index) with the concrete per-hole result for the player's handicap, and explain that this adjustment applies to the score posted for handicap, while the competition scorecard records actual strokes. If it is unclear whether the number is a Handicap Index or a Course Handicap, say which one you assumed. Never answer only that "there is no maximum".
+16. Elevated ball identification check (mandatory for a ball in a tree or other elevated spot): the FIRST item in the exceptions section must state that, to take unplayable-ball relief, the player must find and identify the ball as their own; if it cannot be identified within the 3-minute search time, it is a lost ball and the only option is stroke-and-distance (Rule 18.2).
+17. Accuracy of side references: if the exceptions mention a penalty area, state that Rule 19 unplayable relief is not available there and that Rule 17.1d gives stroke-and-distance, back-on-the-line relief, and (red penalty areas only) lateral relief — never say stroke-and-distance is the only option. Never call a bunker a "hazard" ("obstáculo"); that term was eliminated in 2019.
 
 Use EXACTLY these translated section headers, and do not use the English header names unless the selected language is English:
 
@@ -2527,9 +2560,9 @@ app.get("/admin", (req, res) => {
 
 // ── Health ────────────────────────────────────────────────────────────────
 app.get("/health", (req, res) => {
-  res.json({ status: "ok", version: "v3.16-bunker-exceptions", model: MODEL, kbSize: GOLF_KB.length, logs: logs.length, uptime: process.uptime() });
+  res.json({ status: "ok", version: "v3.17-whs-tree", model: MODEL, kbSize: GOLF_KB.length, logs: logs.length, uptime: process.uptime() });
 });
 
 app.listen(PORT, () => {
- console.log(`FairPlay Rules API v3.16-bunker-exceptions on port ${PORT}`);
+ console.log(`FairPlay Rules API v3.17-whs-tree on port ${PORT}`);
 });
