@@ -132,6 +132,7 @@ async function callClaude(system, userContent, maxTokens = 1400) {
         system: system,
         messages: [{ role: "user", content: userContent }],
       });
+      addLog("claude_stop", { stop: response.stop_reason, outTokens: response.usage && response.usage.output_tokens, maxTokens });
       return response.content[0].text;
     } catch (err) {
       lastErr = err;
@@ -2419,7 +2420,7 @@ CRITICAL INSTRUCTIONS:
 11. Penalty-area / stroke-and-distance option lists: when presenting a numbered list of relief options that includes \"play the ball as it lies\", the introductory sentence framing a penalty (e.g. \"each with one penalty stroke\") must NOT grammatically cover the play-as-it-lies option, since that option is always penalty-free. Structure the list so the no-penalty option is clearly separated from the options that carry a stated penalty.
 12. Declare spatial/positional inferences: if the ruling assumes an unstated physical detail not given in the confirmed facts (e.g., exactly where on the ball or object contact occurred, or the precise cause of an event), that inference must be explicitly listed as its own item in the assumed-facts section — never left implicit only inside the interpretation section.
 13. Rule 17.2 scope check (mandatory whenever a ball was played FROM a penalty area and its NEW resting spot is being ruled on): Rule 17.2a relief options (stroke-and-distance, back-on-the-line, lateral) apply ONLY when the ball played from a penalty area comes to rest in the SAME penalty area or ANOTHER penalty area. If the ball played from a penalty area comes to rest in the general area (fairway, rough, etc.) and is simply lying there playable (not lost, not out of bounds, not unplayable), Rule 17 relief is NOT available for that stroke anymore — the opportunity to take penalty-area relief for that particular position ended the moment the stroke was made. The player's only options are: play the ball as it lies from its current position, or — only if that position is genuinely unplayable — take unplayable-ball relief under Rule 19, calculated from the ball's CURRENT position in the general area, never referencing the old penalty-area crossing point. Do not invent a "return to Rule 17 options" pathway for a ball currently resting, playable, in the general area — that pathway does not exist in the Rules of Golf.
-14. Bunker condition check (mandatory whenever the ball is in a bunker): a footprint, rake mark, uneven or loose sand, or the ball's own pitch mark in the sand is NOT an abnormal course condition — it is part of the bunker, and there is NO free relief for it, even if a SYSTEM ASSUMPTION says otherwise (ignore such an assumption and correct it in the assumed-facts section). In that case the options are: (a) play the ball as it lies under Rule 12, without improving conditions (Rule 12.2b, Rule 8.1); or (b) declare the ball unplayable under Rule 19.3: stroke-and-distance, back-on-the-line relief in the bunker, or lateral relief in the bunker (each 1 penalty stroke), or back-on-the-line relief outside the bunker for a total of 2 penalty strokes (Rule 19.3b). Only apply Rule 16.1c if the confirmed facts state ground under repair, temporary water, an animal hole, or an immovable obstruction in the bunker.
+14. Bunker condition check (mandatory whenever the ball is in a bunker): a footprint, rake mark, uneven or loose sand, or the ball's own pitch mark in the sand is NOT an abnormal course condition — it is part of the bunker, and there is NO free relief for it, even if a SYSTEM ASSUMPTION says otherwise (ignore such an assumption and correct it in the assumed-facts section). In that case the options are: (a) play the ball as it lies under Rule 12, without improving conditions (Rule 12.2b, Rule 8.1); or (b) declare the ball unplayable under Rule 19.3: stroke-and-distance, back-on-the-line relief in the bunker, or lateral relief in the bunker (each 1 penalty stroke), or back-on-the-line relief outside the bunker for a total of 2 penalty strokes (Rule 19.3b). Only apply Rule 16.1c if the confirmed facts state ground under repair, temporary water, an animal hole, or an immovable obstruction in the bunker. In the exceptions section for this situation, do NOT invent exceptions: there is no rule letting the Committee grant free relief after the fact for a footprint, even one left by course staff (a Committee can only mark an area as ground under repair in advance). Under Rule 12.1 a ball is in the bunker when any part of it touches sand inside the bunker edge, so do not say the options change because the ball is partly outside the bunker.
 
 Use EXACTLY these translated section headers, and do not use the English header names unless the selected language is English:
 
@@ -2457,7 +2458,7 @@ ${assumedList}
 
 Deliver the official ruling.`;
 
-    const ruling = await callClaude(system, userContent, 1600);
+    const ruling = await callClaude(system, userContent, 2000);
 
     addLog("ruling_ok", { len: ruling.length });
     res.json({ ruling, confirmedCount: confirmedFacts.length });
@@ -2526,9 +2527,9 @@ app.get("/admin", (req, res) => {
 
 // ── Health ────────────────────────────────────────────────────────────────
 app.get("/health", (req, res) => {
-  res.json({ status: "ok", version: "v3.15-fix-bunker-footprint", model: MODEL, kbSize: GOLF_KB.length, logs: logs.length, uptime: process.uptime() });
+  res.json({ status: "ok", version: "v3.16-bunker-exceptions", model: MODEL, kbSize: GOLF_KB.length, logs: logs.length, uptime: process.uptime() });
 });
 
 app.listen(PORT, () => {
- console.log(`FairPlay Rules API v3.15-fix-bunker-footprint on port ${PORT}`);
+ console.log(`FairPlay Rules API v3.16-bunker-exceptions on port ${PORT}`);
 });
