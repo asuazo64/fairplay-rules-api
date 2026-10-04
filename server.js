@@ -66,7 +66,7 @@ function extractRuleNumbers(text) {
   return out;
 }
 
-function buildKBContext(category, detectedRule) {
+function buildKBContext(category, detectedRule, factsText = "") {
   // 1) Número de regla en detectedRule (puede venir mal etiquetado por /phase1).
   let numKeys = extractRuleNumbers(detectedRule);
   if (numKeys.length === 0) numKeys = extractRuleNumbers(category);
@@ -98,6 +98,13 @@ function buildKBContext(category, detectedRule) {
   //    Esto corrige el caso donde /phase1 etiqueta la regla equivocada (ej. "15" en vez de "16")
   //    y esa etiqueta impedía que se recuperara la regla realmente aplicable.
   let keys = Array.from(new Set([...numKeys, ...catKeys]));
+
+  // 3b) FIX (pisada en búnker): si los hechos mencionan búnker, inyectar siempre
+  //     Regla 12 (búnkeres) y Regla 19 (bola injugable), aunque /phase1 haya
+  //     etiquetado otra regla (ej. Regla 16 por error).
+  if (normalizeCat(factsText).includes("bunker")) {
+    keys = Array.from(new Set([...keys, "12", "19"]));
+  }
 
   // 4) ÚLTIMO RECURSO: set por defecto amplio, solo si no hubo ninguna señal.
   if (keys.length === 0) keys = ["17", "18", "19", "12", "16"];
@@ -2294,6 +2301,7 @@ Rules:
   • Rule 15 = relief from LOOSE IMPEDIMENTS and MOVABLE obstructions only (things a player can move with reasonable effort, e.g. a rake, cup, bag). Rule 16 = relief from ABNORMAL COURSE CONDITIONS, which includes FIXED/IMMOVABLE artificial objects (e.g. sprinkler heads, cart paths, drainage covers), ground under repair, temporary water, and animal holes. A fixed sprinkler head is Rule 16, never Rule 15.
   • Rule 5.5b = practice strokes DURING a round, between holes (putting/chipping near the green just completed). Rule 5.6 = unreasonable delay of play / pace of play. A practice stroke question is 5.5b, not 5.6.
   • Rule 8.1a = a player DELIBERATELY bends, moves, or breaks a growing/attached natural object (branch, grass) or a fixed object to improve their stance, swing, line of play, or line of sight to the target — even if nothing is broken and even if the object is released/restored before the stroke (see Rule 8.1c, which can eliminate the penalty). Rule 15.1a = removing a LOOSE impediment (already detached, e.g. a stick on the ground) or bending/moving something ONLY as part of fairly SEARCHING for a ball. If the user bent, moved, or broke a branch/plant to see or swing better — and was NOT searching for a lost ball — detectedRule is Rule 8.1a (with Rule 8.1c as a likely relevant exception), never Rule 15.
+  • Bunker conditions are NOT abnormal course conditions: a footprint, rake mark, uneven or loose sand, or a ball sitting in its own pitch mark in the sand of a bunker is simply part of the bunker. The detectedRule is "Rule 12 – Bunkers" (with Rule 19.3 unplayable ball as the relief option), NEVER Rule 16. Never add an assumedFact claiming such a condition is an abnormal course condition. Rule 16 applies in a bunker ONLY if the user states ground under repair, temporary water, an animal hole, or an immovable obstruction.
 - Write EVERY human-readable value in the JSON in ${outputLanguage}. This includes facts, assumedFacts, detectedRule, and category.
 - Do not leave default assumptions in English unless ${outputLanguage} is English.
 - Use official 2023 terminology translated naturally into ${outputLanguage}; never use obsolete terms such as water hazard/lateral water hazard.`;
@@ -2393,7 +2401,7 @@ app.post("/ruling", async (req, res) => {
     const system = `You are an official golf rules referee using the 2023 Official Rules of Golf (R&A/USGA).
 
 KNOWLEDGE BASE — use this as your primary reference:
-${buildKBContext(category, detectedRule)}
+${buildKBContext(category, detectedRule, confirmedList)}
 
 CRITICAL INSTRUCTIONS:
 1. Base ruling ONLY on confirmed facts. Never invent facts.
@@ -2411,6 +2419,7 @@ CRITICAL INSTRUCTIONS:
 11. Penalty-area / stroke-and-distance option lists: when presenting a numbered list of relief options that includes \"play the ball as it lies\", the introductory sentence framing a penalty (e.g. \"each with one penalty stroke\") must NOT grammatically cover the play-as-it-lies option, since that option is always penalty-free. Structure the list so the no-penalty option is clearly separated from the options that carry a stated penalty.
 12. Declare spatial/positional inferences: if the ruling assumes an unstated physical detail not given in the confirmed facts (e.g., exactly where on the ball or object contact occurred, or the precise cause of an event), that inference must be explicitly listed as its own item in the assumed-facts section — never left implicit only inside the interpretation section.
 13. Rule 17.2 scope check (mandatory whenever a ball was played FROM a penalty area and its NEW resting spot is being ruled on): Rule 17.2a relief options (stroke-and-distance, back-on-the-line, lateral) apply ONLY when the ball played from a penalty area comes to rest in the SAME penalty area or ANOTHER penalty area. If the ball played from a penalty area comes to rest in the general area (fairway, rough, etc.) and is simply lying there playable (not lost, not out of bounds, not unplayable), Rule 17 relief is NOT available for that stroke anymore — the opportunity to take penalty-area relief for that particular position ended the moment the stroke was made. The player's only options are: play the ball as it lies from its current position, or — only if that position is genuinely unplayable — take unplayable-ball relief under Rule 19, calculated from the ball's CURRENT position in the general area, never referencing the old penalty-area crossing point. Do not invent a "return to Rule 17 options" pathway for a ball currently resting, playable, in the general area — that pathway does not exist in the Rules of Golf.
+14. Bunker condition check (mandatory whenever the ball is in a bunker): a footprint, rake mark, uneven or loose sand, or the ball's own pitch mark in the sand is NOT an abnormal course condition — it is part of the bunker, and there is NO free relief for it, even if a SYSTEM ASSUMPTION says otherwise (ignore such an assumption and correct it in the assumed-facts section). In that case the options are: (a) play the ball as it lies under Rule 12, without improving conditions (Rule 12.2b, Rule 8.1); or (b) declare the ball unplayable under Rule 19.3: stroke-and-distance, back-on-the-line relief in the bunker, or lateral relief in the bunker (each 1 penalty stroke), or back-on-the-line relief outside the bunker for a total of 2 penalty strokes (Rule 19.3b). Only apply Rule 16.1c if the confirmed facts state ground under repair, temporary water, an animal hole, or an immovable obstruction in the bunker.
 
 Use EXACTLY these translated section headers, and do not use the English header names unless the selected language is English:
 
@@ -2517,9 +2526,9 @@ app.get("/admin", (req, res) => {
 
 // ── Health ────────────────────────────────────────────────────────────────
 app.get("/health", (req, res) => {
-  res.json({ status: "ok", version: "v3.14-remove-api-proxy", model: MODEL, kbSize: GOLF_KB.length, logs: logs.length, uptime: process.uptime() });
+  res.json({ status: "ok", version: "v3.15-fix-bunker-footprint", model: MODEL, kbSize: GOLF_KB.length, logs: logs.length, uptime: process.uptime() });
 });
 
 app.listen(PORT, () => {
- console.log(`FairPlay Rules API v3.14-remove-api-proxy on port ${PORT}`);
+ console.log(`FairPlay Rules API v3.15-fix-bunker-footprint on port ${PORT}`);
 });
